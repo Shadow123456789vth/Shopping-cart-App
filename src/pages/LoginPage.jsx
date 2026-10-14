@@ -4,7 +4,6 @@ import { Alert, Box, Button, CircularProgress, Divider, IconButton, InputAdornme
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useAuth } from '../context/AuthContext';
-import { canUseLocalLogin } from '../services/authService';
 import Logo from '../components/Logo';
 
 export default function LoginPage() {
@@ -49,11 +48,11 @@ export default function LoginPage() {
 
         {loading ? (
           <Box sx={{ display: 'grid', placeItems: 'center', py: 4 }}><CircularProgress /></Box>
-        ) : canUseLocalLogin() ? (
+        ) : (
           <Box component="form" onSubmit={handleSubmit} noValidate>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Local dev: sign in with your ServiceNow user. Credentials go through the Vite proxy as Basic auth.
-            </Alert>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Use your ServiceNow user name and password.
+            </Typography>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
             <TextField
               label="User name"
@@ -88,10 +87,6 @@ export default function LoginPage() {
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </Box>
-        ) : (
-          <Alert severity="warning">
-            Your ServiceNow session has expired. <a href="/login.do">Sign in to ServiceNow</a> and reopen the store.
-          </Alert>
         )}
 
         <Divider sx={{ my: 2 }} />

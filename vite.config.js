@@ -38,5 +38,10 @@ export default defineConfig(({ mode }) => {
         '/api': serviceNowProxy,
       },
     },
+    preview: {
+      proxy: {
+        '/api': serviceNowProxy,
+      },
+    },
   };
 });
