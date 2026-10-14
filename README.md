@@ -55,16 +55,18 @@ npm run dev                    # http://localhost:5173
 
 Sign in with a ServiceNow user name and password (`admin` works on a PDI).
 
-### How local auth works
+### How sign-in works
 
-ServiceNow provides no session token (`window.g_ck`) on localhost, so the app uses HTTP Basic auth through the Vite proxy:
+The browser never calls the instance directly. `server/servicenow.js` serves `/api/login` and proxies `/api/now/*`; it runs as Vercel functions (`api/`) in production and as Vite middleware in `npm run dev` / `npm run preview`.
 
-1. **Login** (`src/pages/LoginPage.jsx`, `src/services/authService.js`): the app builds `base64("user:password")` (UTF-8 safe) and sends a test call to `GET /api/now/table/sys_user?user_name=…` with the header `X-Local-Auth: <token>`. If the call succeeds, the token is saved in `window.__localAuth` and `sessionStorage.local_auth`. Signing out clears both.
-2. **Proxy** (`vite.config.js`): turns `X-Local-Auth` into `Authorization: Basic …` before forwarding `/api` to the instance. It also strips cookies and `WWW-Authenticate`, so ServiceNow session cookies can't mix accounts and the browser doesn't show its own login popup.
-3. **Headers** (`src/services/BaseService.js`): after a form login, the app sends `X-Local-Auth`, which the Vite dev proxy or the Vercel proxy turns into `Authorization: Basic`. When served from `*.service-now.com` it sends `Authorization: Basic` directly. With no form login, a deployed app falls back to the platform session (`window.g_ck` → `X-UserToken`).
-4. **Current user**: after a form login, the user name is decoded from the token and looked up in `sys_user`. Otherwise the lookup is `sys_id=javascript:gs.getUserID()`.
+1. **Login** (`src/pages/LoginPage.jsx`, `src/services/authService.js`): the form posts the user name and password to `/api/login`. What happens next depends on `.env.local` / the Vercel environment variables:
+   - **`SN_OAUTH_GRANT=client_credentials`** (default when `SN_CLIENT_ID`/`SN_CLIENT_SECRET` are set): the password is checked once with a Basic-auth test call. The server then gets a client-credentials token from `/oauth_token.do`, keeps it to itself, and returns a signed 8-hour session.
+   - **`SN_OAUTH_GRANT=password`**: the server swaps the user name and password for that user's own OAuth token (refreshed automatically).
+   - **No OAuth client set**: Basic auth on every call.
+2. **API calls** (`src/services/BaseService.js`): the session goes out as `X-SN-Auth`. The proxy turns it into `Authorization: Bearer …` or `Basic …`, strips cookies and `WWW-Authenticate`, and adds `x-shopnow-auth` to the response so DevTools shows which kind of credentials reached ServiceNow.
+3. **Deployed inside ServiceNow**: with no login-form session, `window.g_ck` is sent as `X-UserToken`.
 
-The login form is always shown when nobody is signed in, whatever host name you open the app on.
+**Client credentials caveat:** every API call runs as the OAuth app's *OAuth Application User*, so the business rules stamp and filter `u_user` by that one account, and all shoppers share carts and orders. Use `SN_OAUTH_GRANT=password` for per-shopper data.
 
 ## 4. Payments (demo)
 
@@ -85,4 +87,4 @@ For production, swap `mockGateway` for Razorpay or Stripe, and verify the paymen
 
 ## 6. Deploying on Vercel
 
-`vercel.json` rewrites `/api/now/*` to the serverless proxy in `api/proxy.js`, which forwards to the instance like the Vite dev proxy does. Set **`SN_INSTANCE_URL`** (e.g. `https://dev402340.service-now.com`) under Project → Settings → Environment Variables, then redeploy. Every proxied response carries `x-shopnow-auth: basic-forwarded` or `missing`, so DevTools shows whether the login credentials reached the proxy.
+`vercel.json` rewrites `/api/now/*` to `api/proxy.js`; `api/login.js` handles sign-in. Under Project → Settings → Environment Variables set `SN_INSTANCE_URL`, and for OAuth also `SN_CLIENT_ID`, `SN_CLIENT_SECRET` and optionally `SN_OAUTH_GRANT` / `SN_SESSION_SECRET`, then redeploy.

@@ -3,21 +3,24 @@ const LOCAL_AUTH_KEY = 'local_auth';
 // Set by ServiceNow when the app is served from the instance (UI Page / portal).
 export const hasSessionToken = () => typeof window.g_ck === 'string' && window.g_ck.length > 0;
 
+/** Login-form session: { auth: 'Bearer …' | 'Basic …', refreshToken?, userName }. */
 export function getLocalAuth() {
   if (window.__localAuth) return window.__localAuth;
   try {
-    return sessionStorage.getItem(LOCAL_AUTH_KEY);
+    const raw = sessionStorage.getItem(LOCAL_AUTH_KEY);
+    const session = raw ? JSON.parse(raw) : null;
+    return session?.auth ? session : null;
   } catch {
-    return null;
+    return null; // storage unavailable, or a token from an older version of the app
   }
 }
 
-export function setLocalAuth(token) {
-  window.__localAuth = token;
+export function setLocalAuth(session) {
+  window.__localAuth = session;
   try {
-    sessionStorage.setItem(LOCAL_AUTH_KEY, token);
+    sessionStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(session));
   } catch {
-    /* storage unavailable: token lives in memory for this tab */
+    /* storage unavailable: session lives in memory for this tab */
   }
 }
 
@@ -30,20 +33,6 @@ export function clearLocalAuth() {
   }
 }
 
-// UTF-8 safe base64 (plain btoa throws on non-Latin1 passwords).
-export function toBase64(str) {
-  let binary = '';
-  new TextEncoder().encode(str).forEach((b) => {
-    binary += String.fromCharCode(b);
-  });
-  return btoa(binary);
-}
-
-export function fromBase64(b64) {
-  const binary = atob(b64);
-  return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
-}
-
 export class ApiError extends Error {
   constructor(message, status, detail) {
     super(message);
@@ -52,33 +41,58 @@ export class ApiError extends Error {
   }
 }
 
-function buildHeaders(authToken) {
+function buildHeaders(useAuth) {
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-  const token = authToken || getLocalAuth();
-  if (token) {
-    // Signed in with the login form. The Vite dev proxy and the Vercel proxy (api/proxy.js) turn
-    // X-Local-Auth into Authorization: Basic; a build served from the instance sends Basic auth directly.
-    if (window.location.hostname.endsWith('.service-now.com')) headers.Authorization = `Basic ${token}`;
-    else headers['X-Local-Auth'] = token;
+  if (!useAuth) return headers;
+  const session = getLocalAuth();
+  if (session) {
+    // The proxy (server/servicenow.js) sends this on as the Authorization header.
+    headers['X-SN-Auth'] = session.auth;
   } else if (hasSessionToken()) {
     headers['X-UserToken'] = window.g_ck;
   }
   return headers;
 }
 
-export async function request(path, { method = 'GET', query, body, authToken } = {}) {
+let refreshing = null;
+
+// Swap an expired OAuth access token for a new one. Concurrent 401s share one refresh.
+async function refreshSession() {
+  const session = getLocalAuth();
+  if (!session?.refreshToken) return false;
+  refreshing ??= fetch('/api/login', {
+    method: 'POST',
+    headers: buildHeaders(false),
+    body: JSON.stringify({ refreshToken: session.refreshToken }),
+  })
+    .then(async (res) => {
+      if (!res.ok) return false;
+      const data = await res.json();
+      setLocalAuth({ ...session, auth: data.auth, refreshToken: data.refreshToken || session.refreshToken });
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
+export async function request(path, { method = 'GET', query, body, auth = true } = {}) {
   const params = new URLSearchParams();
   Object.entries(query || {}).forEach(([k, v]) => {
     if (v !== undefined && v !== null && v !== '') params.set(k, v);
   });
   const url = params.toString() ? `${path}?${params}` : path;
 
-  const res = await fetch(url, {
+  const send = () => fetch(url, {
     method,
-    headers: buildHeaders(authToken),
+    headers: buildHeaders(auth),
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: 'same-origin',
   });
+  let res = await send();
+  if (res.status === 401 && auth && (await refreshSession())) res = await send();
 
   const text = res.status === 204 ? '' : await res.text();
   let data = null;
@@ -104,9 +118,8 @@ const TABLE_API = '/api/now/table';
 const COMMON = { sysparm_exclude_reference_link: 'true', sysparm_display_value: 'false' };
 
 export const tableApi = {
-  async list(table, { query, fields, limit, offset, authToken } = {}) {
+  async list(table, { query, fields, limit, offset } = {}) {
     const { data, headers } = await request(`${TABLE_API}/${table}`, {
-      authToken,
       query: {
         ...COMMON,
         sysparm_query: query,
