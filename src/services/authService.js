@@ -1,5 +1,5 @@
 import {
-  clearLocalAuth, fromBase64, getLocalAuth, hasSessionToken, isLocalhost, sanitizeQueryValue, setLocalAuth, tableApi, toBase64,
+  clearLocalAuth, fromBase64, getLocalAuth, hasSessionToken, sanitizeQueryValue, setLocalAuth, tableApi, toBase64,
 } from './BaseService';
 
 const USER_FIELDS = 'sys_id,user_name,first_name,last_name,name,email';
@@ -23,7 +23,7 @@ async function findUserByName(userName, authToken) {
   return mapUser(records[0]);
 }
 
-/** Local dev only: validate credentials through the proxy, then keep the token for this tab. */
+/** Validate ServiceNow credentials with a test call, then keep the token for this tab. */
 export async function loginLocal(userName, password) {
   const token = toBase64(`${userName}:${password}`);
   const user = await findUserByName(userName, token); // throws ApiError(401) on bad credentials
@@ -33,26 +33,24 @@ export async function loginLocal(userName, password) {
 
 /** Resolves the signed-in user, or null when nobody is signed in. */
 export async function getCurrentUser() {
-  if (hasSessionToken()) {
-    const { records } = await tableApi.list('sys_user', {
-      query: 'sys_id=javascript:gs.getUserID()',
-      fields: USER_FIELDS,
-      limit: 1,
-    });
-    return records.length ? mapUser(records[0]) : null;
-  }
-  if (!isLocalhost()) return null;
-
   const token = getLocalAuth();
-  if (!token) return null;
-  // Use the user name from our own token, not gs.getUser(): session cookies could belong to another account.
-  const decoded = fromBase64(token);
-  return findUserByName(decoded.slice(0, decoded.indexOf(':')));
+  if (token) {
+    // Use the user name from our own token, not gs.getUser(): session cookies could belong to another account.
+    const decoded = fromBase64(token);
+    return findUserByName(decoded.slice(0, decoded.indexOf(':')));
+  }
+  if (!hasSessionToken()) return null;
+
+  const { records } = await tableApi.list('sys_user', {
+    query: 'sys_id=javascript:gs.getUserID()',
+    fields: USER_FIELDS,
+    limit: 1,
+  });
+  return records.length ? mapUser(records[0]) : null;
 }
 
 export function logout() {
+  const usedLoginForm = Boolean(getLocalAuth());
   clearLocalAuth();
-  if (hasSessionToken()) window.location.href = '/logout.do';
+  if (!usedLoginForm && hasSessionToken()) window.location.href = '/logout.do';
 }
-
-export const canUseLocalLogin = () => isLocalhost() && !hasSessionToken();

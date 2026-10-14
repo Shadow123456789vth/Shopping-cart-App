@@ -61,8 +61,10 @@ ServiceNow provides no session token (`window.g_ck`) on localhost, so the app us
 
 1. **Login** (`src/pages/LoginPage.jsx`, `src/services/authService.js`): the app builds `base64("user:password")` (UTF-8 safe) and sends a test call to `GET /api/now/table/sys_user?user_name=…` with the header `X-Local-Auth: <token>`. If the call succeeds, the token is saved in `window.__localAuth` and `sessionStorage.local_auth`. Signing out clears both.
 2. **Proxy** (`vite.config.js`): turns `X-Local-Auth` into `Authorization: Basic …` before forwarding `/api` to the instance. It also strips cookies and `WWW-Authenticate`, so ServiceNow session cookies can't mix accounts and the browser doesn't show its own login popup.
-3. **Headers** (`src/services/BaseService.js`): when the app is deployed and `window.g_ck` is set, it sends `X-UserToken`. On localhost it sends `X-Local-Auth`.
-4. **Current user**: on localhost, the user name is decoded from the token and looked up in `sys_user`. When deployed, the lookup is `sys_id=javascript:gs.getUserID()`.
+3. **Headers** (`src/services/BaseService.js`): after a form login, dev builds send `X-Local-Auth` (for the proxy) and production builds send `Authorization: Basic` directly. With no form login, a deployed app falls back to the platform session (`window.g_ck` → `X-UserToken`).
+4. **Current user**: after a form login, the user name is decoded from the token and looked up in `sys_user`. Otherwise the lookup is `sys_id=javascript:gs.getUserID()`.
+
+The login form is always shown when nobody is signed in, whatever host name you open the app on.
 
 ## 4. Payments (demo)
 

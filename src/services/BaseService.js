@@ -1,7 +1,5 @@
 const LOCAL_AUTH_KEY = 'local_auth';
 
-export const isLocalhost = () => ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
 // Set by ServiceNow when the app is served from the instance (UI Page / portal).
 export const hasSessionToken = () => typeof window.g_ck === 'string' && window.g_ck.length > 0;
 
@@ -56,11 +54,14 @@ export class ApiError extends Error {
 
 function buildHeaders(authToken) {
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-  if (hasSessionToken()) {
+  const token = authToken || getLocalAuth();
+  if (token) {
+    // Signed in with the login form. In dev the Vite proxy turns X-Local-Auth into Authorization: Basic;
+    // a build served from the instance sends Basic auth to the same origin directly.
+    if (import.meta.env.DEV) headers['X-Local-Auth'] = token;
+    else headers.Authorization = `Basic ${token}`;
+  } else if (hasSessionToken()) {
     headers['X-UserToken'] = window.g_ck;
-  } else if (isLocalhost()) {
-    const token = authToken || getLocalAuth();
-    if (token) headers['X-Local-Auth'] = token; // the Vite proxy turns this into Authorization: Basic
   }
   return headers;
 }
