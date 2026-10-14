@@ -82,3 +82,7 @@ For production, swap `mockGateway` for Razorpay or Stripe, and verify the paymen
 ## 5. Deploying inside ServiceNow (optional)
 
 `npm run build` writes `dist/`. The app uses `HashRouter` and relative asset paths, so it can be hosted from a UI Page or Service Portal widget. ServiceNow then injects `g_ck` and the app uses the logged-in session automatically.
+
+## 6. Deploying on Vercel
+
+`vercel.json` rewrites `/api/now/*` to the serverless proxy in `api/proxy.js`, which forwards to the instance like the Vite dev proxy does. Set **`SN_INSTANCE_URL`** (e.g. `https://dev402340.service-now.com`) under Project → Settings → Environment Variables, then redeploy.
