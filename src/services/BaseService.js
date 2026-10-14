@@ -56,10 +56,10 @@ function buildHeaders(authToken) {
   const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
   const token = authToken || getLocalAuth();
   if (token) {
-    // Signed in with the login form. In dev the Vite proxy turns X-Local-Auth into Authorization: Basic;
-    // a build served from the instance sends Basic auth to the same origin directly.
-    if (import.meta.env.DEV) headers['X-Local-Auth'] = token;
-    else headers.Authorization = `Basic ${token}`;
+    // Signed in with the login form. The Vite dev proxy and the Vercel proxy (api/proxy.js) turn
+    // X-Local-Auth into Authorization: Basic; a build served from the instance sends Basic auth directly.
+    if (window.location.hostname.endsWith('.service-now.com')) headers.Authorization = `Basic ${token}`;
+    else headers['X-Local-Auth'] = token;
   } else if (hasSessionToken()) {
     headers['X-UserToken'] = window.g_ck;
   }
