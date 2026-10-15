@@ -59,14 +59,10 @@ Sign in with a ServiceNow user name and password (`admin` works on a PDI).
 
 The browser never calls the instance directly. `server/servicenow.js` serves `/api/login` and proxies `/api/now/*`; it runs as Vercel functions (`api/`) in production and as Vite middleware in `npm run dev` / `npm run preview`.
 
-1. **Login** (`src/pages/LoginPage.jsx`, `src/services/authService.js`): the form posts the user name and password to `/api/login`. What happens next depends on `.env.local` / the Vercel environment variables:
-   - **`SN_OAUTH_GRANT=client_credentials`** (default when `SN_CLIENT_ID`/`SN_CLIENT_SECRET` are set): the password is checked once with a Basic-auth test call. The server then gets a client-credentials token from `/oauth_token.do`, keeps it to itself, and returns a signed 8-hour session.
-   - **`SN_OAUTH_GRANT=password`**: the server swaps the user name and password for that user's own OAuth token (refreshed automatically).
-   - **No OAuth client set**: Basic auth on every call.
-2. **API calls** (`src/services/BaseService.js`): the session goes out as `X-SN-Auth`. The proxy turns it into `Authorization: Bearer …` or `Basic …`, strips cookies and `WWW-Authenticate`, and adds `x-shopnow-auth` to the response so DevTools shows which kind of credentials reached ServiceNow.
+1. **Login** (`src/pages/LoginPage.jsx`, `src/services/authService.js`): the form posts the user name and password to `/api/login`. The server checks them with a Basic-auth Table API call (ServiceNow answers 401 for a wrong password) and returns the Basic credentials, which the browser keeps in `sessionStorage` for the tab.
+2. **API calls** (`src/services/BaseService.js`): the credentials go out as `X-SN-Auth`. The proxy sends them on as `Authorization: Basic …`, strips cookies and `WWW-Authenticate`, and adds `x-shopnow-auth` to the response so DevTools shows whether credentials reached ServiceNow. Every call runs as the signed-in user, so carts and orders are per shopper.
 3. **Deployed inside ServiceNow**: with no login-form session, `window.g_ck` is sent as `X-UserToken`.
 
-**Client credentials caveat:** every API call runs as the OAuth app's *OAuth Application User*, so the business rules stamp and filter `u_user` by that one account, and all shoppers share carts and orders. Use `SN_OAUTH_GRANT=password` for per-shopper data.
 
 ## 4. Payments (demo)
 
@@ -87,4 +83,4 @@ For production, swap `mockGateway` for Razorpay or Stripe, and verify the paymen
 
 ## 6. Deploying on Vercel
 
-`vercel.json` rewrites `/api/now/*` to `api/proxy.js`; `api/login.js` handles sign-in. Under Project → Settings → Environment Variables set `SN_INSTANCE_URL`, and for OAuth also `SN_CLIENT_ID`, `SN_CLIENT_SECRET` and optionally `SN_OAUTH_GRANT` / `SN_SESSION_SECRET`, then redeploy.
+`vercel.json` rewrites `/api/now/*` to `api/proxy.js`; `api/login.js` handles sign-in. Under Project → Settings → Environment Variables set `SN_INSTANCE_URL`, then redeploy.

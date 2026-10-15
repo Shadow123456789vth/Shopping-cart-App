@@ -22,7 +22,7 @@ async function findUserByName(userName) {
   return mapUser(records[0]);
 }
 
-/** Sign in through /api/login (OAuth password grant, or Basic auth when no OAuth client is set up). */
+/** Sign in through /api/login: the server checks the user name and password against ServiceNow. */
 export async function login(userName, password) {
   const { data } = await request('/api/login', { method: 'POST', body: { userName, password }, auth: false });
   setLocalAuth({ ...data, userName }); // throws ApiError(401) above on bad credentials

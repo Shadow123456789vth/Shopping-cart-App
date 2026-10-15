@@ -3,7 +3,7 @@ const LOCAL_AUTH_KEY = 'local_auth';
 // Set by ServiceNow when the app is served from the instance (UI Page / portal).
 export const hasSessionToken = () => typeof window.g_ck === 'string' && window.g_ck.length > 0;
 
-/** Login-form session: { auth: 'Bearer …' | 'Basic …', refreshToken?, userName }. */
+/** Login-form session: { auth: 'Basic …', userName }. */
 export function getLocalAuth() {
   if (window.__localAuth) return window.__localAuth;
   try {
@@ -54,30 +54,6 @@ function buildHeaders(useAuth) {
   return headers;
 }
 
-let refreshing = null;
-
-// Swap an expired OAuth access token for a new one. Concurrent 401s share one refresh.
-async function refreshSession() {
-  const session = getLocalAuth();
-  if (!session?.refreshToken) return false;
-  refreshing ??= fetch('/api/login', {
-    method: 'POST',
-    headers: buildHeaders(false),
-    body: JSON.stringify({ refreshToken: session.refreshToken }),
-  })
-    .then(async (res) => {
-      if (!res.ok) return false;
-      const data = await res.json();
-      setLocalAuth({ ...session, auth: data.auth, refreshToken: data.refreshToken || session.refreshToken });
-      return true;
-    })
-    .catch(() => false)
-    .finally(() => {
-      refreshing = null;
-    });
-  return refreshing;
-}
-
 export async function request(path, { method = 'GET', query, body, auth = true } = {}) {
   const params = new URLSearchParams();
   Object.entries(query || {}).forEach(([k, v]) => {
@@ -85,14 +61,12 @@ export async function request(path, { method = 'GET', query, body, auth = true }
   });
   const url = params.toString() ? `${path}?${params}` : path;
 
-  const send = () => fetch(url, {
+  const res = await fetch(url, {
     method,
     headers: buildHeaders(auth),
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: 'same-origin',
   });
-  let res = await send();
-  if (res.status === 401 && auth && (await refreshSession())) res = await send();
 
   const text = res.status === 204 ? '' : await res.text();
   let data = null;
