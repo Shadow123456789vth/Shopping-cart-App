@@ -59,8 +59,8 @@ Sign in with a ServiceNow user name and password (`admin` works on a PDI).
 
 The browser never calls the instance directly. `server/servicenow.js` serves `/api/login` and proxies `/api/now/*`; it runs as Vercel functions (`api/`) in production and as Vite middleware in `npm run dev` / `npm run preview`.
 
-1. **Login** (`src/pages/LoginPage.jsx`, `src/services/authService.js`): the form posts the user name and password to `/api/login`. The server checks them with a Basic-auth Table API call (ServiceNow answers 401 for a wrong password) and returns the Basic credentials, which the browser keeps in `sessionStorage` for the tab.
-2. **API calls** (`src/services/BaseService.js`): the credentials go out as `X-SN-Auth`. The proxy sends them on as `Authorization: Basic …`, strips cookies and `WWW-Authenticate`, and adds `x-shopnow-auth` to the response so DevTools shows whether credentials reached ServiceNow. Every call runs as the signed-in user, so carts and orders are per shopper.
+1. **Login** (`src/pages/LoginPage.jsx`, `src/services/authService.js`): the form posts the user name and password to `/api/login`. The server compares them with `SN_USERNAME` / `SN_PASSWORD` from `.env.local` (or the Vercel environment variables) and, if they match, returns a signed 8-hour session that the browser keeps in `sessionStorage` for the tab. Only that one account can sign in.
+2. **API calls** (`src/services/BaseService.js`): the session goes out as `X-SN-Auth`. The proxy checks it, calls ServiceNow with Basic auth for `SN_USERNAME`, and strips cookies and `WWW-Authenticate`. The ServiceNow password never reaches the browser.
 3. **Deployed inside ServiceNow**: with no login-form session, `window.g_ck` is sent as `X-UserToken`.
 
 
@@ -83,4 +83,4 @@ For production, swap `mockGateway` for Razorpay or Stripe, and verify the paymen
 
 ## 6. Deploying on Vercel
 
-`vercel.json` rewrites `/api/now/*` to `api/proxy.js`; `api/login.js` handles sign-in. Under Project → Settings → Environment Variables set `SN_INSTANCE_URL`, then redeploy.
+`vercel.json` rewrites `/api/now/*` to `api/proxy.js`; `api/login.js` handles sign-in. Under Project → Settings → Environment Variables set `SN_INSTANCE_URL`, `SN_USERNAME`, `SN_PASSWORD` and optionally `SN_SESSION_SECRET`, then redeploy.

@@ -3,7 +3,7 @@ const LOCAL_AUTH_KEY = 'local_auth';
 // Set by ServiceNow when the app is served from the instance (UI Page / portal).
 export const hasSessionToken = () => typeof window.g_ck === 'string' && window.g_ck.length > 0;
 
-/** Login-form session: { auth: 'Basic …', userName }. */
+/** Login-form session: { auth: 'App …' (signed by the server), userName }. */
 export function getLocalAuth() {
   if (window.__localAuth) return window.__localAuth;
   try {
@@ -46,7 +46,7 @@ function buildHeaders(useAuth) {
   if (!useAuth) return headers;
   const session = getLocalAuth();
   if (session) {
-    // The proxy (server/servicenow.js) sends this on as the Authorization header.
+    // The proxy (server/servicenow.js) checks this and calls ServiceNow with the account from its .env.
     headers['X-SN-Auth'] = session.auth;
   } else if (hasSessionToken()) {
     headers['X-UserToken'] = window.g_ck;
